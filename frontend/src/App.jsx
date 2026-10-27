@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Spinner, UncontrolledAlert } from 'reactstrap';
+import { Container, Row, Col, Spinner, UncontrolledAlert, Button } from 'reactstrap';
 import * as api from './services/api.js';
 import PanelUsuario from './components/PanelUsuario.jsx';
 import MenuDelDia from './components/MenuDelDia.jsx';
 import BandejaReserva from './components/BandejaReserva.jsx';
 import ModalExpirada from './components/ModalExpirada.jsx';
+import MisReservas from './components/MisReservas.jsx';
 import { formatearDinero } from './utils.js';
 
 function App() {
   const [menu, setMenu] = useState([]); // arreglo de platos
   const [reserva, setReserva] = useState(null); // objeto con la reserva y el saldo
+  const [historial, setHistorial] = useState([]); // reservas confirmadas / canceladas
+  const [verReservas, setVerReservas] = useState(false); // modal "Mis reservas" abierto
   const [segundos, setSegundos] = useState(0); // cuenta regresiva
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [cargando, setCargando] = useState(false); // hay una petición en curso
@@ -21,13 +24,16 @@ function App() {
     setError({ id: Date.now(), mensaje: err.message });
   };
 
-  // Pide menú y reserva al mismo tiempo y sincroniza el estado de React.
+  // Pide menú, reserva e historial al mismo tiempo y sincroniza el estado de React.
   const refrescar = useCallback(
     () =>
-      Promise.all([api.obtenerMenu(), api.obtenerReserva()]).then(([menuActual, reservaActual]) => {
-        setMenu(menuActual);
-        setReserva(reservaActual);
-      }),
+      Promise.all([api.obtenerMenu(), api.obtenerReserva(), api.obtenerHistorial()]).then(
+        ([menuActual, reservaActual, historialActual]) => {
+          setMenu(menuActual);
+          setReserva(reservaActual);
+          setHistorial(historialActual);
+        }
+      ),
     []
   );
 
@@ -96,6 +102,21 @@ function App() {
   const handleConfirmar = () => ejecutar(() => api.confirmarReserva());
   const handleNueva = () => ejecutar(() => api.iniciarReserva());
 
+  // --- Mis reservas ---
+  const abrirReservas = () => {
+    setAviso(null);
+    setError(null);
+    setVerReservas(true);
+  };
+  const handleCancelarReserva = (id) => {
+    const registro = historial.find((r) => r.id === id);
+    const monto = registro ? formatearDinero(registro.total) : '';
+    return ejecutar(
+      () => api.cancelarReservaConfirmada(id),
+      `Reserva #${id} cancelada. Se devolvieron ${monto} a tu saldo.`
+    );
+  };
+
   if (cargandoInicial) {
     return (
       <div className="text-center mt-5">
@@ -118,15 +139,21 @@ function App() {
   }
 
   const bloqueado = cargando || reserva.estado === 'confirmada' || reserva.estado === 'expirada';
+  const reservasConfirmadas = historial.filter((r) => r.estado === 'confirmada').length;
 
   return (
     <>
       <PanelUsuario reserva={reserva} segundos={segundos} cargando={cargando} />
 
       <section className="mc-hero">
-        <Container>
-          <h1>¡Arma tu almuerzo!</h1>
-          <p>Porciones limitadas para evitar el desperdicio. Completa tu reserva antes de que se acabe el tiempo.</p>
+        <Container className="d-flex flex-wrap align-items-end justify-content-between gap-3">
+          <div>
+            <h1>¡Arma tu almuerzo!</h1>
+            <p>Porciones limitadas para evitar el desperdicio. Completa tu reserva antes de que se acabe el tiempo.</p>
+          </div>
+          <Button color="primary" onClick={abrirReservas}>
+            📋 Mis reservas{reservasConfirmadas > 0 ? ` (${reservasConfirmadas})` : ''}
+          </Button>
         </Container>
       </section>
 
@@ -163,8 +190,21 @@ function App() {
       <footer className="mc-footer">Food DEI S.A. de R.L. · Reserva hoy, sin desperdicio 🍟</footer>
 
       <ModalExpirada abierto={reserva.estado === 'expirada'} cargando={cargando} onReiniciar={handleNueva} />
+
+      <MisReservas
+        abierto={verReservas}
+        historial={historial}
+        saldo={reserva.saldo}
+        cargando={cargando}
+        aviso={aviso}
+        error={error}
+        onCerrar={() => setVerReservas(false)}
+        onCancelar={handleCancelarReserva}
+      />
     </>
   );
 }
 
 export default App;
+
+

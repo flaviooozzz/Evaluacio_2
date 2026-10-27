@@ -55,3 +55,8 @@ export const eliminarPlato = (id) => solicitar(`/reserva/eliminar/${id}`, { meth
 // Extras
 export const confirmarReserva = () => solicitar('/reserva/confirmar', { method: 'POST' });
 export const iniciarReserva = () => solicitar('/reserva/iniciar', { method: 'POST' });
+
+// Mis reservas
+export const obtenerHistorial = () => solicitar('/reserva/historial');
+export const cancelarReservaConfirmada = (id) =>
+  solicitar(`/reserva/historial/${id}/cancelar`, { method: 'POST' });
