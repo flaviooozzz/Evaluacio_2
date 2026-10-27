@@ -40,6 +40,11 @@ app.post('/guess', (req, res) => {
   res.json({ guess, result, message });
 });
 
+app.post('/reset', (req, res) => {
+  secretNumber = generateSecretNumber();
+  res.json({ message: 'Nuevo número generado' });
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
 });
