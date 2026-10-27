@@ -1,74 +1,169 @@
-import { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, CardBody, CardTitle, CardText, Button, Badge } from 'reactstrap';
-import './App.css';
+import { useState, useEffect, useCallback } from 'react';
+import { Container, Row, Col, Spinner, UncontrolledAlert } from 'reactstrap';
+import * as api from './services/api.js';
+import PanelUsuario from './components/PanelUsuario.jsx';
+import MenuDelDia from './components/MenuDelDia.jsx';
+import BandejaReserva from './components/BandejaReserva.jsx';
+import ModalExpirada from './components/ModalExpirada.jsx';
+import { formatearDinero } from './utils.js';
 
 function App() {
-  const [menu, setMenu] = useState([
-    { id: 1, nombre: 'Hamburguesa Sencilla', precio: 5.50, stock: 5 },
-    { id: 2, nombre: 'Pizza de Pepperoni', precio: 8.99, stock: 0 },
-    { id: 3, nombre: 'Ensalada César', precio: 4.25, stock: 3 }
-  ]);
-  const [saldo, setSaldo] = useState(50.00);
-  const [gasto, setGasto] = useState(0.00);
+  const [menu, setMenu] = useState([]); // arreglo de platos
+  const [reserva, setReserva] = useState(null); // objeto con la reserva y el saldo
+  const [segundos, setSegundos] = useState(0); // cuenta regresiva
+  const [cargandoInicial, setCargandoInicial] = useState(true);
+  const [cargando, setCargando] = useState(false); // hay una petición en curso
+  const [error, setError] = useState(null); // { id, mensaje }
+  const [aviso, setAviso] = useState(null); // { id, mensaje } confirmación de éxito
 
-  // PREPARACIÓN PARA EL BACKEND (Cuando esté listo el servidor, solo hay que quitar los comentarios /* */)
-  /*
+  const mostrarError = (err) => {
+    setAviso(null);
+    setError({ id: Date.now(), mensaje: err.message });
+  };
+
+  // Pide menú y reserva al mismo tiempo y sincroniza el estado de React.
+  const refrescar = useCallback(
+    () =>
+      Promise.all([api.obtenerMenu(), api.obtenerReserva()]).then(([menuActual, reservaActual]) => {
+        setMenu(menuActual);
+        setReserva(reservaActual);
+      }),
+    []
+  );
+
+  // Carga inicial al montar el componente
   useEffect(() => {
-    fetch('http://localhost:3000/api/menu')
-      .then(res => res.json())
-      .then(data => setMenu(data))
-      .catch(err => console.error("Error al cargar menú:", err));
-  }, []);
-  */
+    refrescar()
+      .catch(mostrarError)
+      .finally(() => setCargandoInicial(false));
+  }, [refrescar]);
+
+  // Cuenta regresiva: se reinicia cada vez que cambia la hora de expiración.
+  const expiraEn = reserva?.expiraEn ?? null;
+  const segundosIniciales = reserva?.segundosRestantes ?? 0;
+  useEffect(() => {
+    if (!expiraEn) {
+      setSegundos(0);
+      return undefined;
+    }
+    const limite = Date.now() + segundosIniciales * 1000;
+    setSegundos(segundosIniciales);
+
+    const intervalo = setInterval(() => {
+      const restante = Math.max(0, Math.ceil((limite - Date.now()) / 1000));
+      setSegundos(restante);
+      if (restante === 0) {
+        clearInterval(intervalo);
+        refrescar().catch(mostrarError); // el backend ya cerró la reserva
+      }
+    }, 1000);
+
+    return () => clearInterval(intervalo);
+  }, [expiraEn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ejecuta una acción del API, refresca los datos y captura los errores de negocio.
+  const ejecutar = async (accion, mensajeExito = null) => {
+    setCargando(true);
+    try {
+      await accion();
+      setError(null);
+      if (mensajeExito) setAviso({ id: Date.now(), mensaje: mensajeExito });
+    } catch (err) {
+      mostrarError(err); // ej. "Stock insuficiente", "Saldo insuficiente para esta cantidad"
+    }
+    try {
+      await refrescar(); // refleja también lo que pasó en el servidor (ej. expiración)
+    } catch (err) {
+      mostrarError(err);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const handleAgregar = (id) => ejecutar(() => api.agregarPlato(id, 1));
+  const handleCambiarPorciones = (id, cantidad) => ejecutar(() => api.actualizarPorciones(id, cantidad));
+  const handleQuitar = (id) => {
+    const linea = reserva.itemsReservados.find((item) => item.id === id);
+    const plato = menu.find((p) => p.id === id);
+    const monto = linea && plato ? formatearDinero(plato.precio * linea.cantidad) : '';
+    const mensaje = plato
+      ? reserva.estado === 'confirmada'
+        ? `Quitaste ${plato.nombre}. Se devolvieron ${monto} a tu saldo.`
+        : `Quitaste ${plato.nombre}. Las porciones volvieron al menú y se liberaron ${monto}.`
+      : null;
+    return ejecutar(() => api.eliminarPlato(id), mensaje);
+  };
+  const handleConfirmar = () => ejecutar(() => api.confirmarReserva());
+  const handleNueva = () => ejecutar(() => api.iniciarReserva());
+
+  if (cargandoInicial) {
+    return (
+      <div className="text-center mt-5">
+        <Spinner color="primary" />
+        <p className="mt-2">Cargando...</p>
+      </div>
+    );
+  }
+
+  if (!reserva) {
+    return (
+      <Container className="mt-4">
+        {error && (
+          <UncontrolledAlert color="warning" key={error.id}>
+            {error.mensaje}
+          </UncontrolledAlert>
+        )}
+      </Container>
+    );
+  }
+
+  const bloqueado = cargando || reserva.estado === 'confirmada' || reserva.estado === 'expirada';
 
   return (
-    <Container className="py-4">
-      <h2 className="text-center mb-4 text-primary fw-bold">Food DEI S.A.</h2>
+    <>
+      <PanelUsuario reserva={reserva} segundos={segundos} cargando={cargando} />
 
-      <div className="d-flex justify-content-between align-items-center bg-light p-3 mb-4 rounded shadow-sm border">
-        <h5 className="text-success mb-0">Saldo Disponible: ${saldo.toFixed(2)}</h5>
-        <h5 className="text-danger mb-0">Gasto Actual: ${gasto.toFixed(2)}</h5>
-      </div>
+      <section className="mc-hero">
+        <Container>
+          <h1>¡Arma tu almuerzo!</h1>
+          <p>Porciones limitadas para evitar el desperdicio. Completa tu reserva antes de que se acabe el tiempo.</p>
+        </Container>
+      </section>
 
-      <Row>
-        {/* COLUMNA IZQUIERDA: Tu Catálogo */}
-        <Col md="8">
-          <h4>Menú del Día</h4>
-          <Row className="mt-3">
-            {menu.map((plato) => (
-              <Col md="6" className="mb-4" key={plato.id}>
-                <Card className="h-100 shadow-sm">
-                  <CardBody className="d-flex flex-column">
-                    <CardTitle tag="h5" className="text-dark">{plato.nombre}</CardTitle>
-                    <CardText className="mb-4">
-                      Precio: <strong>${plato.precio.toFixed(2)}</strong> <br />
-                      Stock Disponible: <Badge color={plato.stock > 0 ? "info" : "danger"}>{plato.stock}</Badge>
-                    </CardText>
-                    <Button 
-                      color={plato.stock > 0 ? "primary" : "secondary"} 
-                      className="mt-auto fw-bold"
-                      disabled={plato.stock === 0}
-                    >
-                      {plato.stock > 0 ? "+ Añadir al Carrito" : "Agotado"}
-                    </Button>
-                  </CardBody>
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        </Col>
+      <Container className="py-4">
+        {aviso && (
+          <UncontrolledAlert color="success" key={aviso.id}>
+            {aviso.mensaje}
+          </UncontrolledAlert>
+        )}
+        {error && (
+          <UncontrolledAlert color="warning" key={error.id}>
+            {error.mensaje}
+          </UncontrolledAlert>
+        )}
 
-        {/* COLUMNA DERECHA: El espacio reservado para tu compañero */}
-        <Col md="4">
-          <div className="p-3 bg-light rounded border h-100">
-            <h4 className="text-center">🛒 Mi Carrito</h4>
-            <p className="text-muted text-center mt-4">
-              (Aquí programará tu compañero)
-            </p>
-          </div>
-        </Col>
-      </Row>
-    </Container>
+        <Row>
+          <Col lg="8" className="mb-4">
+            <MenuDelDia menu={menu} deshabilitar={bloqueado} onAgregar={handleAgregar} />
+          </Col>
+          <Col lg="4">
+            <BandejaReserva
+              reserva={reserva}
+              menu={menu}
+              cargando={cargando}
+              onCambiarPorciones={handleCambiarPorciones}
+              onQuitar={handleQuitar}
+              onConfirmar={handleConfirmar}
+              onNueva={handleNueva}
+            />
+          </Col>
+        </Row>
+      </Container>
+
+      <footer className="mc-footer">Food DEI S.A. de R.L. · Reserva hoy, sin desperdicio 🍟</footer>
+
+      <ModalExpirada abierto={reserva.estado === 'expirada'} cargando={cargando} onReiniciar={handleNueva} />
+    </>
   );
 }
 
