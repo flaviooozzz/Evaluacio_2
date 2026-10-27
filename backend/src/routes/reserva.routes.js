@@ -5,6 +5,7 @@ import {
   actualizarPorciones,
   eliminarPlato,
   confirmarReserva,
+  cancelarReservaConfirmada,
   iniciarReserva,
   obtenerHistorial
 } from '../services/reservaService.js';
@@ -48,9 +49,15 @@ router.post('/iniciar', (req, res) => {
   res.status(201).json(iniciarReserva());
 });
 
-// GET /api/reserva/historial -> reservas confirmadas
+// GET /api/reserva/historial -> todas las reservas confirmadas (y canceladas) con su detalle
 router.get('/historial', (req, res) => {
   res.json(obtenerHistorial());
+});
+
+// POST /api/reserva/historial/:id/cancelar -> cancela una reserva confirmada,
+// devuelve el dinero al saldo y las porciones al stock
+router.post('/historial/:id/cancelar', (req, res) => {
+  res.json(cancelarReservaConfirmada(Number(req.params.id)));
 });
 
 export default router;

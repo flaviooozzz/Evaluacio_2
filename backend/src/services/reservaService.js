@@ -11,9 +11,13 @@ const estado = {
   saldo: SALDO_INICIAL, // saldo confirmado (solo baja al confirmar)
   items: [], // [{ id, cantidad }]
   fase: 'vacia', // 'vacia' | 'activa' | 'expirada' | 'confirmada'
-  expiraEn: null // timestamp (ms) en que vence la reserva activa
+  expiraEn: null, // timestamp (ms) en que vence la reserva activa
+  confirmadaId: null // id del registro del historial que se muestra como "confirmada"
 };
-const historial = []; // reservas confirmadas
+// Reservas confirmadas: { id, items, total, confirmadaEn, estado, canceladaEn }
+// estado: 'confirmada' | 'cancelada'
+const historial = [];
+let siguienteId = 1;
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -155,18 +159,28 @@ export const eliminarPlato = (id) => {
   plato.stock += removido.cantidad; // devuelve al stock general
 
   if (estado.fase === 'confirmada') {
-    estado.saldo = redondear(estado.saldo + plato.precio * removido.cantidad); // reembolso
-    const ultima = historial[historial.length - 1];
-    if (estado.items.length === 0) historial.pop(); // pedido cancelado por completo
-    else if (ultima) {
-      ultima.items = estado.items.map((item) => ({ ...item }));
-      ultima.total = calcularTotal();
+    const reembolso = redondear(plato.precio * removido.cantidad);
+    estado.saldo = redondear(estado.saldo + reembolso); // reembolso
+
+    const registro = historial.find((r) => r.id === estado.confirmadaId);
+    if (registro) {
+      if (estado.items.length === 0) {
+        // Se quitó el último plato: la reserva queda cancelada (se conserva en el historial)
+        registro.items = [{ ...removido }];
+        registro.total = reembolso;
+        registro.estado = 'cancelada';
+        registro.canceladaEn = new Date().toISOString();
+      } else {
+        registro.items = estado.items.map((item) => ({ ...item }));
+        registro.total = calcularTotal();
+      }
     }
   }
 
   if (estado.items.length === 0) {
     estado.fase = 'vacia'; // sin platos no hay reloj corriendo
     estado.expiraEn = null;
+    estado.confirmadaId = null;
   }
   return obtenerReserva();
 };
@@ -181,12 +195,46 @@ export const confirmarReserva = () => {
   estado.saldo = redondear(estado.saldo - total);
   estado.fase = 'confirmada';
   estado.expiraEn = null;
+
+  const id = siguienteId++;
   historial.push({
+    id,
     items: estado.items.map((item) => ({ ...item })),
     total,
-    confirmadaEn: new Date().toISOString()
+    confirmadaEn: new Date().toISOString(),
+    estado: 'confirmada',
+    canceladaEn: null
   });
+  estado.confirmadaId = id;
+
   return obtenerReserva(); // el stock queda bloqueado definitivamente
+};
+
+// Cancela una reserva ya confirmada (desde "Mis reservas"):
+// devuelve el dinero al saldo, regresa las porciones al stock y la marca como cancelada.
+export const cancelarReservaConfirmada = (id) => {
+  if (!Number.isInteger(id)) throw new HttpError(400, 'Id inválido');
+  verificarExpiracion();
+
+  const registro = historial.find((r) => r.id === id);
+  if (!registro) throw new HttpError(404, 'La reserva no existe');
+  if (registro.estado === 'cancelada') throw new HttpError(409, 'Esta reserva ya fue cancelada');
+
+  registro.items.forEach((item) => {
+    buscarPlato(item.id).stock += item.cantidad; // devuelve las porciones al menú
+  });
+  estado.saldo = redondear(estado.saldo + registro.total); // reembolso completo
+  registro.estado = 'cancelada';
+  registro.canceladaEn = new Date().toISOString();
+
+  // Si esa reserva seguía mostrándose como confirmada en la bandeja, se vacía.
+  if (estado.confirmadaId === id) {
+    estado.items = [];
+    estado.fase = 'vacia';
+    estado.expiraEn = null;
+    estado.confirmadaId = null;
+  }
+  return obtenerReserva();
 };
 
 // Empieza una reserva nueva. Si había una activa, libera sus porciones.
@@ -196,8 +244,19 @@ export const iniciarReserva = () => {
   estado.items = [];
   estado.fase = 'vacia';
   estado.expiraEn = null;
+  estado.confirmadaId = null;
   return obtenerReserva();
 };
 
-export const obtenerHistorial = () => historial.map((reserva) => ({ ...reserva }));
-
+// Historial con el detalle de cada plato (nombre y precio), la más reciente primero.
+export const obtenerHistorial = () =>
+  historial
+    .map((reserva) => ({
+      ...reserva,
+      items: reserva.items.map((item) => {
+        const plato = buscarPlato(item.id);
+        return { id: item.id, nombre: plato.nombre, precio: plato.precio, cantidad: item.cantidad };
+      })
+    }))
+    .reverse();
+    
