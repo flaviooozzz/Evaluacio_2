@@ -67,14 +67,14 @@ function App() {
     return () => clearInterval(intervalo);
   }, [expiraEn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // El aviso de éxito desaparece solo después de 4 segundos
+  // El aviso de éxito desaparece solo después de 15 segundos
   useEffect(() => {
     if (!aviso) return undefined;
     const timer = setTimeout(() => setAviso(null), 15000);
     return () => clearTimeout(timer);
   }, [aviso]);
 
-  // El error desaparece solo después de 6 segundos (más tiempo para leerlo)
+  // El error desaparece solo después de 15 segundos 
   useEffect(() => {
     if (!error) return undefined;
     const timer = setTimeout(() => setError(null), 15000);
