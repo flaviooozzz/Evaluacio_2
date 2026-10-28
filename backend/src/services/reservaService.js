@@ -1,28 +1,23 @@
 import { crearMenuInicial, SALDO_INICIAL } from '../data/menu.js';
 import { HttpError } from '../utils/HttpError.js';
 
-// ---------------------------------------------------------------------------
 // Estado en memoria del servidor
-// ---------------------------------------------------------------------------
 const DURACION_SEG = Number(process.env.RESERVA_DURACION_SEG) || 300;
 
-const menu = crearMenuInicial(); // arreglo de platos (stock vivo)
+const menu = crearMenuInicial(); 
 const estado = {
-  saldo: SALDO_INICIAL, // saldo confirmado (solo baja al confirmar)
-  items: [], // [{ id, cantidad }]
-  fase: 'vacia', // 'vacia' | 'activa' | 'expirada' | 'confirmada'
-  expiraEn: null, // timestamp (ms) en que vence la reserva activa
-  confirmadaId: null // id del registro del historial que se muestra como "confirmada"
+  saldo: SALDO_INICIAL, // saldo confirmado 
+  items: [], 
+  fase: 'vacia', 
+  expiraEn: null, 
+  confirmadaId: null 
 };
 // Reservas confirmadas: { id, items, total, confirmadaEn, estado, canceladaEn }
 // estado: 'confirmada' | 'cancelada'
 const historial = [];
 let siguienteId = 1;
 
-// ---------------------------------------------------------------------------
-// Utilidades
-// ---------------------------------------------------------------------------
-// Redondea a 2 decimales para evitar errores de coma flotante (0.1 + 0.2).
+// Redondea a 2 decimales para evitar errores
 const redondear = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const buscarPlato = (id) => menu.find((plato) => plato.id === id);
@@ -36,7 +31,6 @@ const calcularTotal = () =>
     }, 0)
   );
 
-// Devuelve al stock del menú todas las porciones que tenía la reserva.
 const liberarItems = () => {
   estado.items.forEach((item) => {
     buscarPlato(item.id).stock += item.cantidad;
@@ -46,9 +40,9 @@ const liberarItems = () => {
 
 const esEnteroPositivo = (valor) => Number.isInteger(valor) && valor > 0;
 
-// ---------------------------------------------------------------------------
-// Expiración: si se acabó el tiempo, se cierra la reserva y se libera el stock
-// ---------------------------------------------------------------------------
+
+//si se acabó el tiempo, se cierra la reserva y se libera el stock
+
 export const verificarExpiracion = () => {
   if (estado.fase === 'activa' && Date.now() >= estado.expiraEn) {
     liberarItems();
@@ -70,9 +64,8 @@ const asegurarModificable = () => {
   }
 };
 
-// ---------------------------------------------------------------------------
 // Casos de uso (los llaman las rutas)
-// ---------------------------------------------------------------------------
+
 export const obtenerMenu = () => menu.map((plato) => ({ ...plato }));
 
 export const obtenerReserva = () => {
