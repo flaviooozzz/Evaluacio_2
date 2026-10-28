@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Spinner, UncontrolledAlert, Button } from 'reactstrap';
+import { Container, Row, Col, Spinner, Alert, Button } from 'reactstrap';
 import * as api from './services/api.js';
 import PanelUsuario from './components/PanelUsuario.jsx';
 import MenuDelDia from './components/MenuDelDia.jsx';
@@ -67,6 +67,20 @@ function App() {
     return () => clearInterval(intervalo);
   }, [expiraEn]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // El aviso de éxito desaparece solo después de 4 segundos
+  useEffect(() => {
+    if (!aviso) return undefined;
+    const timer = setTimeout(() => setAviso(null), 15000);
+    return () => clearTimeout(timer);
+  }, [aviso]);
+
+  // El error desaparece solo después de 6 segundos (más tiempo para leerlo)
+  useEffect(() => {
+    if (!error) return undefined;
+    const timer = setTimeout(() => setError(null), 15000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   // Ejecuta una acción del API, refresca los datos y captura los errores de negocio.
   const ejecutar = async (accion, mensajeExito = null) => {
     setCargando(true);
@@ -130,9 +144,9 @@ function App() {
     return (
       <Container className="mt-4">
         {error && (
-          <UncontrolledAlert color="warning" key={error.id}>
+          <Alert color="warning" toggle={() => setError(null)} key={error.id}>
             {error.mensaje}
-          </UncontrolledAlert>
+          </Alert>
         )}
       </Container>
     );
@@ -159,14 +173,14 @@ function App() {
 
       <Container className="py-4">
         {aviso && (
-          <UncontrolledAlert color="success" key={aviso.id}>
+          <Alert color="success" toggle={() => setAviso(null)} key={aviso.id}>
             {aviso.mensaje}
-          </UncontrolledAlert>
+          </Alert>
         )}
         {error && (
-          <UncontrolledAlert color="warning" key={error.id}>
+          <Alert color="warning" toggle={() => setError(null)} key={error.id}>
             {error.mensaje}
-          </UncontrolledAlert>
+          </Alert>
         )}
 
         <Row>
@@ -206,5 +220,3 @@ function App() {
 }
 
 export default App;
-
-
